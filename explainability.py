@@ -1,13 +1,21 @@
-# explainability.py
-"""
-EigenCAM for YOLOv8-seg using safe activation extraction.
-Avoids tensor size mismatch by extracting activations post-inference.
+"""EigenCAM heatmap and plain-language explanation for YOLOv8-seg.
+
+Flow:
+    forward hooks on backbone layers 0-9 -> run the image through the model
+    -> take the deepest 4-D activation -> first principal component (EigenCAM),
+       sign-corrected so hot = strong activation
+    -> resize, colour-map and blend onto the image
+    -> per detection: mean CAM value inside its box -> "visual support" text
+
+If no activation can be used, falls back to a confidence-weighted Gaussian
+heatmap built from the detection boxes.
 """
 import cv2
 import numpy as np
 import torch
 
 def generate_explanation(yolo_model, image_bgr, detections, save_dir="explanations"):
+    """Return a dict with the blended heatmap, its saved path and a text summary."""
     import os, time
     os.makedirs(save_dir, exist_ok=True)
 
@@ -22,7 +30,7 @@ def generate_explanation(yolo_model, image_bgr, detections, save_dir="explanatio
         def hook_fn(module, input, output):
             # Only capture tensor outputs, skip tuples/lists from detection heads
             if isinstance(output, torch.Tensor) and output.ndim == 4:
-                activations.append(output.detach().cpu())
+                activations.append(output.detach().float().cpu())
         return hook_fn
 
     # Register hooks only on Conv2d layers in backbone (safe layers)
@@ -38,6 +46,13 @@ def generate_explanation(yolo_model, image_bgr, detections, save_dir="explanatio
 
     # Run inference with hooks active
     tensor = torch.from_numpy(img_float).permute(2, 0, 1).unsqueeze(0)
+    # Match the model's device and precision (e.g. CUDA / fp16), otherwise the
+    # first layer fails and we silently fall back to the box-only heatmap.
+    try:
+        param  = next(model.parameters())
+        tensor = tensor.to(device=param.device, dtype=param.dtype)
+    except StopIteration:
+        pass
     with torch.no_grad():
         try:
             yolo_model.model(tensor)

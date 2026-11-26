@@ -1,9 +1,21 @@
-# detector.py
+"""Road-defect detection core.
+
+Flow for one image (``RoadDefectDetector.detect``):
+
+    BGR image -> YOLOv8-seg -> per instance: mask polygon, box, class, confidence
+              -> area (Shapely polygon area, falls back to box area; cm^2 if a
+                 pixels-per-cm scale is set)
+              -> severity + written reason (``classify_severity``)
+              -> review flag when confidence < REVIEW_THRESHOLD
+              -> one JSON line appended to the audit log
+
+Settings come from environment variables (or a ``.env`` file): MODEL_PATH,
+CONFIDENCE_THRESHOLD, REVIEW_THRESHOLD, AUDIT_LOG_PATH.
+"""
 from dotenv import load_dotenv
 import os, cv2, time, json
 import numpy as np
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from shapely.geometry import Polygon
 
 load_dotenv()
@@ -44,6 +56,7 @@ class Detection:
 
 # ── Severity logic ────────────────────────────────────────────────────────────
 def classify_severity(class_name, area_px, confidence):
+    """Map a defect's pixel area to low / moderate / high, with a written reason."""
     t     = SEVERITY_THRESHOLDS.get(class_name, {"low": 300, "moderate": 1500})
     low_t = t["low"]
     hi_t  = t["moderate"]
@@ -62,12 +75,12 @@ def classify_severity(class_name, area_px, confidence):
                   f"({hi_t}px^2) for '{class_name}'. Immediate repair recommended.")
 
     if confidence < REVIEW_THRESHOLD and sev == "high":
-        sev   += ""
-        reason += (f"Severity kept at HIGH but model confidence ({confidence:.2f}) "
-                   f"is below {REVIEW_THRESHOLD} mandatory human verification required.")
+        reason += (f" Severity kept at HIGH, but model confidence ({confidence:.2f}) "
+                   f"is below {REVIEW_THRESHOLD}: mandatory human verification required.")
     return sev, reason
 
 def confidence_reason(class_name, confidence, area_px):
+    """Explain the model's confidence level in plain language."""
     if confidence >= 0.75:
         quality = "high"
         basis   = "strong texture contrast and clear boundary edges"
@@ -82,6 +95,8 @@ def confidence_reason(class_name, confidence, area_px):
 
 # ── Main detector class ───────────────────────────────────────────────────────
 class RoadDefectDetector:
+    """Wraps the YOLOv8-seg model: detection, annotation and audit logging."""
+
     def __init__(
         self,
         model_path=MODEL_PATH,
@@ -96,6 +111,7 @@ class RoadDefectDetector:
         self.audit_log_path     = audit_log_path
 
     def detect(self, image_bgr, image_path="unknown"):
+        """Run the model on a BGR image and return a list of ``Detection``."""
         results    = self.model(image_bgr, conf=self.conf_threshold, verbose=False)
         detections = []
 
@@ -146,6 +162,7 @@ class RoadDefectDetector:
         return detections
 
     def annotate_image(self, image, detections):
+        """Draw masks, boxes and labels, coloured by severity, on a copy of the image."""
         vis = image.copy()
         for det in detections:
             color = SEVERITY_COLORS.get(det.severity, (128, 128, 128))
@@ -178,5 +195,5 @@ class RoadDefectDetector:
             "total":           len(detections),
             "detections":      [asdict(d) for d in detections],
         }
-        with open(self.audit_log_path, "a") as f:
+        with open(self.audit_log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")

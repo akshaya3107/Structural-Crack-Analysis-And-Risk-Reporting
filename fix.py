@@ -1,5 +1,5 @@
-# fix_bbox_to_polygon.py
-"""
+"""Data prep step 3: convert box labels to polygons.
+
 Converts YOLO bbox labels (class cx cy w h) → polygon format
 (class x1y1 x2y1 x2y2 x1y2) so all labels are consistent
 for YOLOv8-seg training.

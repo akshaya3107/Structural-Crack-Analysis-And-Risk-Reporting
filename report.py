@@ -1,4 +1,8 @@
-# report.py
+"""Save the results for one image to ``reports/``.
+
+Writes five files named ``<image>_<timestamp>_*``: annotated JPG, heatmap JPG,
+JSON report, CSV (one row per detection) and an ethics TXT summary.
+"""
 import json, csv, cv2
 from pathlib import Path
 from dataclasses import asdict
@@ -7,8 +11,9 @@ from datetime import datetime
 def generate_report(image_path, annotated_image, heatmap_image,
                     detections, ethics_report, explanation_text,
                     output_dir="reports"):
+    """Write all report files and return a dict of their paths."""
     out  = Path(output_dir)
-    out.mkdir(exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     stem = Path(str(image_path)).stem
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -38,12 +43,12 @@ def generate_report(image_path, annotated_image, heatmap_image,
         },
     }
     json_path = str(out / f"{stem}_{ts}_report.json")
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2)
 
     # 4. CSV
     csv_path = str(out / f"{stem}_{ts}_report.csv")
-    with open(csv_path, "w", newline="") as f:
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["class_name","confidence","severity","area_px","area_cm2",
                     "flagged_for_review","bbox_x1","bbox_y1","bbox_x2","bbox_y2",
@@ -58,7 +63,7 @@ def generate_report(image_path, annotated_image, heatmap_image,
 
     # 5. Ethics text
     eth_path = str(out / f"{stem}_{ts}_ethics.txt")
-    with open(eth_path, "w") as f:
+    with open(eth_path, "w", encoding="utf-8") as f:
         f.write(f"ETHICS & TRANSPARENCY REPORT\n{'='*50}\n")
         f.write(f"Model version    : {ethics_report.model_version}\n")
         f.write(f"Processed at     : {ts}\n")

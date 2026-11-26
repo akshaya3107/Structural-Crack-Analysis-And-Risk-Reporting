@@ -1,5 +1,8 @@
-# verify_dataset.py
-"""Quick sanity check before training."""
+"""Data prep step 5: sanity-check ``unified_dataset`` before training.
+
+Prints data.yaml and image / label counts per split, and creates empty label
+files for images that have none (YOLO treats them as background).
+"""
 from pathlib import Path
 import yaml
 

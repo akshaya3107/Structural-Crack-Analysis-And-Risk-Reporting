@@ -48,6 +48,30 @@ flowchart LR
 
 Any detection with confidence **< 0.40** is flagged for **mandatory human review**.
 
+### App flow (what happens when you click *Analyse Image*)
+
+| Step | Module | Output |
+|---|---|---|
+| 1. Detect | `detector.py` → `RoadDefectDetector.detect()` | One `Detection` per defect: class, confidence, box, mask polygon, area, severity + reason, review flag. A line is appended to `audit_log.jsonl`. |
+| 2. Annotate | `detector.py` → `annotate_image()` | Image with masks and boxes coloured by severity (**tab 1**) |
+| 3. Explain *(optional)* | `explainability.py` → `generate_explanation()` | EigenCAM heatmap + per-detection "visual support" text (**tab 2**) |
+| 4. Report | `app.py` | Per-detection metrics and reasoning (**tab 3**) |
+| 5. Ethics | `ethics.py` → `generate_ethics_report()` | Disclaimer, review count, class / severity mix, bias warnings, provenance (**tab 4**) |
+| 6. Save *(optional)* | `report.py` → `generate_report()` | `reports/<image>_<time>_{annotated,heatmap}.jpg`, `_report.json`, `_report.csv`, `_ethics.txt` |
+
+### Data preparation flow
+
+The prepared dataset is already in `unified_dataset/`, so you only need these steps to rebuild it. Run them from the repository root, in order:
+
+| Step | Script | What it does |
+|---|---|---|
+| 1 | `potholes_conversion.py` | Pascal VOC XML in `potholes/` → YOLO box labels in `potholes_yolo/` |
+| 2 | `merge_data.py` | Merges `crack-seg/` + `potholes_yolo/` → `unified_dataset/` (0 = crack, 1 = pothole), writes `data.yaml` |
+| 3 | `fix.py` | Converts pothole box labels to 4-point polygons so every label is a segmentation polygon |
+| 4 | `clean_labels.py` | Drops invalid lines, clips coordinates to [0, 1] |
+| 5 | `verify.py` | Prints counts per split, adds empty labels for background images |
+| 6 | `train.py` | Trains YOLOv8n-seg → `runs/segment/runs/road_defect_seg<N>/weights/best.pt` |
+
 ---
 
 ## 📸 Screenshots
@@ -154,8 +178,8 @@ Full output: [`docs/test_results.txt`](docs/test_results.txt).
 ## 🚀 Getting started
 
 ```bash
-git clone https://github.com/ChetanyaB/AI-Powered-Structural-Crack-Analysis-And-Risk-Reporting.git
-cd AI-Powered-Structural-Crack-Analysis-And-Risk-Reporting
+git clone https://github.com/akshaya3107/Structural-Crack-Analysis-And-Risk-Reporting.git
+cd Structural-Crack-Analysis-And-Risk-Reporting
 python -m venv venv                # create a virtual environment
 venv/Scripts/activate              # Windows
 # source venv/bin/activate         # Linux / macOS
@@ -167,7 +191,18 @@ python train.py                    # retrain (GPU recommended)
 yolo segment val model=runs/segment/runs/road_defect_seg6/weights/best.pt data=unified_dataset/data.yaml imgsz=416
 ```
 
-Optional `.env` settings: `MODEL_PATH`, `CONFIDENCE_THRESHOLD` (default 0.25), `REVIEW_THRESHOLD` (default 0.40), `AUDIT_LOG_PATH`.
+### Configuration
+
+Set these as environment variables or in a `.env` file in the repository root. All are optional.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MODEL_PATH` | `./runs/segment/runs/road_defect_seg6/weights/best.pt` | Trained weights used by the app |
+| `CONFIDENCE_THRESHOLD` | `0.25` | Minimum confidence for a detection (the app's sidebar slider overrides it) |
+| `REVIEW_THRESHOLD` | `0.40` | Detections below this are flagged for human review |
+| `AUDIT_LOG_PATH` | `audit_log.jsonl` | Where every inference is logged |
+
+Generated at runtime and ignored by git: `reports/`, `explanations/`, `audit_log.jsonl`.
 
 ## 🗂️ Project structure
 
@@ -178,9 +213,13 @@ Optional `.env` settings: `MODEL_PATH`, `CONFIDENCE_THRESHOLD` (default 0.25), `
 ├── ethics.py            # Review flags, bias warnings, provenance
 ├── report.py            # JPG / JSON / CSV / TXT report export
 ├── train.py             # Training script
-├── merge_data.py, potholes_conversion.py, clean_labels.py, verify.py   # Data preparation
+├── potholes_conversion.py, merge_data.py, fix.py, clean_labels.py, verify.py   # Data preparation (steps 1–5)
+├── crack-seg/           # Source: Ultralytics crack-seg (YOLO-seg format)
+├── potholes/            # Source: Annotated Potholes (Pascal VOC XML)
+├── potholes_yolo/       # Step 1 output
 ├── unified_dataset/     # Merged YOLO-seg dataset (train / val / test)
-├── runs/segment/runs/road_defect_seg6/   # Final training run + weights
+├── runs/segment/runs/road_defect_seg6/   # Final training run + weights (earlier runs kept for reference)
+├── yolov8n-seg.pt       # Pretrained base weights used by train.py
 ├── tests/test_pipeline.py
 └── docs/                # Screenshots, evaluation plots, metrics
 ```

@@ -1,5 +1,10 @@
-# merge_datasets.py
-import os, shutil, yaml
+"""Data prep step 2: merge crack-seg and potholes_yolo into ``unified_dataset``.
+
+Copies images and labels into images/{train,val,test} and labels/{...},
+prefixes file names with the source name to avoid clashes, remaps class ids to
+0 = crack, 1 = pothole, and writes ``unified_dataset/data.yaml``.
+"""
+import shutil, yaml
 from pathlib import Path
 
 # ── PATHS ─────────────────────────────────────────────────────────
@@ -95,8 +100,9 @@ def merge():
                     new_lbl_path.touch()
 
     # Write unified data.yaml
+    # No "path" key: Ultralytics then uses the folder holding data.yaml,
+    # which keeps the dataset portable across machines.
     data_yaml = {
-        "path": str(out.resolve()),
         "train": "images/train",
         "val":   "images/val",
         "test":  "images/test",

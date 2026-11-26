@@ -1,4 +1,9 @@
-# train.py
+"""Train YOLOv8n-seg on ``unified_dataset``.
+
+Results land in ``runs/segment/runs/road_defect_seg<N>/`` (Ultralytics adds the
+``segment/`` prefix and a run number). Point MODEL_PATH at the new
+``weights/best.pt`` to use it in the app.
+"""
 from dotenv import load_dotenv
 import torch
 import os

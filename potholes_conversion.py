@@ -1,5 +1,9 @@
-# convert_pothole.py
-import os
+"""Data prep step 1: convert the Annotated Potholes dataset to YOLO format.
+
+Reads Pascal VOC XML from ``potholes/annotated-images`` and the split list in
+``potholes/splits.json`` (train / test; test is used as val), and writes images
+plus YOLO box labels to ``potholes_yolo/``.
+"""
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -78,25 +82,24 @@ def convert_pothole_dataset():
 
         # Find the corresponding image
         img_path = None
-        for ext in [".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"]:
-            candidate = annotated / (Path(filename).stem + ext)
+        candidates = [annotated / filename] + [
+            annotated / (Path(filename).stem + ext)
+            for ext in [".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"]
+        ]
+        for candidate in candidates:
             if candidate.exists():
                 img_path = candidate
                 break
-            # Also try without extension in filename tag
-            candidate2 = annotated / filename
-            if candidate2.exists():
-                img_path = candidate2
-                break
 
         if img_path is None:
-            print(f"  Image not found for {xml_file.name}, label only")
-            # Still write label even without image copy
-        else:
-            shutil.copy(img_path, out / "images" / split / img_path.name)
+            # A label without an image is useless for training, so skip it
+            print(f"  Image not found for {xml_file.name}, skipping")
+            skipped += 1
+            continue
+        shutil.copy(img_path, out / "images" / split / img_path.name)
 
         # Write YOLO label
-        label_path = out / "labels" / split / (Path(filename).stem + ".txt")
+        label_path = out / "labels" / split / (img_path.stem + ".txt")
         with open(label_path, "w") as lf:
             for box in boxes:
                 lf.write(f"{box[0]} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f} {box[4]:.6f}\n")
@@ -105,8 +108,9 @@ def convert_pothole_dataset():
 
     # Write data.yaml for pothole-only dataset
     import yaml
+    # No "path" key: Ultralytics then uses the folder holding data.yaml,
+    # which keeps the dataset portable across machines.
     data_yaml = {
-        "path": str(out.resolve()),
         "train": "images/train",
         "val":   "images/val",
         "test":  "images/test",

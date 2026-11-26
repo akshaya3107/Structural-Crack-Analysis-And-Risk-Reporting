@@ -1,10 +1,21 @@
-# app.py  — Streamlit version (Python 3.13 compatible)
-import streamlit as st
+"""Streamlit web app for road-defect detection.
+
+Flow:
+    upload image -> "Analyse Image"
+      -> detector.detect()            masks, area, severity, review flags, audit log
+      -> detector.annotate_image()    tab 1: annotated result + severity counts
+      -> explainability.generate_explanation()   tab 2: EigenCAM heatmap (optional)
+      -> tab 3: per-detection report
+      -> ethics.generate_ethics_report()          tab 4: disclaimer, bias, provenance
+      -> report.generate_report()     saves JPG / JSON / CSV / TXT to reports/ (optional)
+
+Run:  streamlit run app.py
+"""
+import os
+
 import cv2
 import numpy as np
-from PIL import Image
-import os
-import sys
+import streamlit as st
 from dotenv import load_dotenv
 
 
@@ -29,12 +40,6 @@ st.set_page_config(
 def load_detector():
     from detector import RoadDefectDetector
     return RoadDefectDetector(model_path=MODEL_PATH)
-
-@st.cache_resource
-def load_explainer_model():
-    from detector import RoadDefectDetector
-    d = RoadDefectDetector(model_path=MODEL_PATH)
-    return d.model
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("🛣️ Road Defect Detection System")
@@ -71,6 +76,9 @@ if uploaded is not None:
     # Convert to BGR
     file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
     image_bgr  = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if image_bgr is None:
+        st.error("Could not read this file as an image. Please upload a valid JPG or PNG.")
+        st.stop()
     image_rgb  = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
     st.image(image_rgb, caption="Uploaded image", use_container_width=True)
@@ -87,6 +95,8 @@ if uploaded is not None:
             annotated  = detector.annotate_image(image_bgr, detections)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
+        from ethics import generate_ethics_report
+        ethics = generate_ethics_report(detections)
         xai = None  # filled in by the EigenCAM tab when enabled
 
         # ── Results tabs ──────────────────────────────────────────────────────
@@ -114,8 +124,7 @@ if uploaded is not None:
             if show_heatmap:
                 with st.spinner("Generating EigenCAM heatmap..."):
                     from explainability import generate_explanation
-                    yolo_model = load_explainer_model()
-                    xai = generate_explanation(yolo_model, image_bgr, detections)
+                    xai = generate_explanation(detector.model, image_bgr, detections)
                     heatmap_rgb = cv2.cvtColor(xai["heatmap_bgr"], cv2.COLOR_BGR2RGB)
                 st.image(heatmap_rgb, caption="EigenCAM — red/warm areas = model focus regions",
                          use_container_width=True)
@@ -155,9 +164,6 @@ if uploaded is not None:
                                 f"x2={d.bbox_xyxy[2]:.0f}, y2={d.bbox_xyxy[3]:.0f}")
 
         with tab4:
-            from ethics import generate_ethics_report
-            ethics = generate_ethics_report(detections)
-
             st.subheader("Disclaimer")
             if ethics.flagged_for_review > 0:
                 st.error(ethics.disclaimer)
@@ -186,9 +192,7 @@ if uploaded is not None:
         # ── Save reports ──────────────────────────────────────────────────────
         if save_report:
             with st.spinner("Saving reports..."):
-                from ethics import generate_ethics_report
                 from report import generate_report
-                ethics = generate_ethics_report(detections)
                 xai_text = xai["summary"] if xai else "Heatmap disabled"
                 heatmap_save = xai["heatmap_bgr"] if xai else image_bgr
                 paths = generate_report(
@@ -199,10 +203,7 @@ if uploaded is not None:
                     ethics_report=ethics,
                     explanation_text=xai_text,
                 )
-            st.success(f"✅ Reports saved to /reports folder")
+            st.success("✅ Reports saved to /reports folder")
             with st.expander("📁 Saved file paths"):
                 for k, v in paths.items():
                     st.code(v)
-
-if __name__ == "__main__":
-    pass

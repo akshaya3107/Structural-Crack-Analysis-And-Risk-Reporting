@@ -1,16 +1,19 @@
+# Model and inference
 ultralytics
-roboflow
-opencv-python-headless
-matplotlib
-numpy
-pandas
-pillow
-streamlit
 torch
 torchvision
-grad-cam
+opencv-python-headless
+numpy
 shapely
-scikit-learn
-tqdm
-pyyaml
+pillow
+
+# Web app
+streamlit
+
+# Configuration and data prep
 python-dotenv
+pyyaml
+matplotlib
+
+# Tests
+pytest

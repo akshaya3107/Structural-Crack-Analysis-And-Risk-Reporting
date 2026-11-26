@@ -16,3 +16,10 @@ reports/
 explanations/
 .pytest_cache/
 *.cache
+
+# 🔹 Other virtual environments
+venv/
+.venv/
+
+# 🔹 Local settings (may hold paths or secrets)
+.env

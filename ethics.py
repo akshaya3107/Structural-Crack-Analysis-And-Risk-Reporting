@@ -1,6 +1,13 @@
-# ethics.py
+"""Ethics and transparency checks for a set of detections.
+
+Produces an ``EthicsReport`` with: how many detections need human review,
+class / severity distributions, simple bias warnings (class mix far from the
+training mix), a disclaimer, and dataset provenance.
+"""
 from dataclasses import dataclass
 from collections import Counter
+
+from detector import AUDIT_LOG_PATH, REVIEW_THRESHOLD
 
 DATASET_PROVENANCE = (
     "Model trained on: Ultralytics crack-seg (4,029 images, AGPL-3.0) + "
@@ -25,7 +32,8 @@ class EthicsReport:
     audit_trail_path:     str
 
 def generate_ethics_report(detections, model_version="yolov8n-seg-v1",
-                            audit_log_path="audit_log.jsonl"):
+                            audit_log_path=AUDIT_LOG_PATH):
+    """Build an ``EthicsReport`` for the detections of one image."""
     total    = len(detections)
     flagged  = sum(1 for d in detections if d.flagged_for_review)
     cls_dist = dict(Counter(d.class_name for d in detections))
@@ -49,7 +57,7 @@ def generate_ethics_report(detections, model_version="yolov8n-seg-v1",
 
     if flagged > 0:
         disclaimer = (
-            f"DISCLAIMER: {flagged}/{total} detection(s) have confidence < 0.40 "
+            f"DISCLAIMER: {flagged}/{total} detection(s) have confidence < {REVIEW_THRESHOLD:.2f} "
             f"and are FLAGGED FOR MANDATORY HUMAN REVIEW. These detections must NOT "
             f"be used for repair prioritisation without verification by a qualified engineer."
         )

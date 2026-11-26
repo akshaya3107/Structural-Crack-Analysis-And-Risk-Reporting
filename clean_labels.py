@@ -1,14 +1,14 @@
-# clean_labels.py
-"""
-Scans all label files in unified_dataset and:
+"""Data prep step 4: validate and clean label files.
+
+Scans all label files in unified_dataset and, rewriting each file in place:
 1. Removes lines with fewer than 5 values (invalid YOLO format)
-2. Removes lines where polygon coords are out of [0,1] range
-3. Removes lines where class_id doesn't match nc in data.yaml
-4. Deletes or empties files with zero valid annotations
-5. Reports a summary
+2. Removes lines whose class_id is not an integer in [0, NC)
+3. Removes lines with non-numeric or an odd number of coordinates
+4. Clips coordinates to the [0, 1] range
+5. Leaves files with no valid annotations empty (background images)
+and prints a summary.
 """
 from pathlib import Path
-import yaml
 
 DATASET_DIR = "./unified_dataset"
 NC = 2  # number of classes: 0=crack, 1=pothole
